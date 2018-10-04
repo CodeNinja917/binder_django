@@ -1,6 +1,9 @@
 # binder
 > dns web管理系统
 > 
+> - 域名: 通过文件操作, rndc
+> - 记录: dnspython
+> 
 ## DNS配置
 ```
 allow-new-zones yes;  // 允许添加域名
