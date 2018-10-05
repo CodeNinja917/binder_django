@@ -5,7 +5,9 @@ from .exceptions import KeyringException
 from binder.settings import DNS
 
 from cryptography.fernet import Fernet, InvalidToken
+from invoke.exceptions import UnexpectedExit
 from fabric import Connection
+import logging
 import time
 import dns
 import dns.zone
@@ -145,21 +147,34 @@ class Zone(models.Model):
         )
         con = Connection(DNS['MASTER_SERVER'], connect_kwargs={
                          'key_filename': '/root/.ssh/id_rsa'})
-        con.run("echo '{}' > /var/named/data/db.{}".format(
-            zone_content, self.zone_name))
-        add_zone_cmd = (
-            "/usr/sbin/rndc addzone %(zone_name)s IN %(view_name)s "
-            "\'{type master;file \"data/db.%(zone_name)s\"; allow-update "
-            "{ 192.168.137.134; key web;};};\'")
-        con.run(add_zone_cmd %
-                {'zone_name': self.zone_name, 'view_name': self.view_name})
-        con.run('/usr/sbin/rndc reload')
+        try:
+            con.run("echo '{}' > /var/named/data/db.{}".format(
+                zone_content, self.zone_name))
+            add_zone_cmd = (
+                "/usr/sbin/rndc addzone %(zone_name)s IN %(view_name)s "
+                "\'{type master;file \"data/db.%(zone_name)s\"; allow-update "
+                "{ 192.168.137.134; key %(key_name)s;};};\'")
+            con.run(add_zone_cmd %
+                    {
+                        'zone_name': self.zone_name,
+                        'view_name': self.view_name,
+                        'key_name': self.server.default_transfer_key.name
+                    })
+            con.run('/usr/sbin/rndc reload')
+        except UnexpectedExit as exc:
+            logging.error('exec command failed for {}, exit code {}'.format(
+                exc.result.command, exc.result.exited))
         con.close()
 
     def delete_zone(self):
         con = Connection(DNS['MASTER_SERVER'], connect_kwargs={
             'key_filename': '/root/.ssh/id_rsa'})
-        con.run('/usr/sbin/rndc delzone {}'.format(self.zone_name))
+        try:
+            con.run('/usr/sbin/rndc delzone {}'.format(self.zone_name))
+            con.run('rm -rf /var/named/data/db.{}'.format(self.zone_name))
+        except UnexpectedExit as exc:
+            logging.error('exec command failed for {}, exit code {}'.format(
+                exc.result.command, exc.result.exited))
         con.close()
 
     class Meta:
@@ -188,14 +203,18 @@ class Record(models.Model):
             keyring = transfer_key.create_keyring()
             algorithm = transfer_key.algorithm
 
-        dns_update = dns.update.Update(
-            self.zone.zone_name, keyring=keyring, keyalgorithm=algorithm)
-        dns_update.replace(self.name, self.ttl, self.rr_type, self.rr_data)
-        resp = dns.query.tcp(
-            dns_update, self.zone.server.ip_address,
-            port=self.zone.server.dns_port)
-        if resp.rcode() != dns.rcode.NOERROR:
-            self.delete()
+        try:
+            dns_update = dns.update.Update(
+                self.zone.zone_name, keyring=keyring, keyalgorithm=algorithm)
+            dns_update.replace(self.name, self.ttl, self.rr_type, self.rr_data)
+            resp = dns.query.tcp(
+                dns_update, self.zone.server.ip_address,
+                port=self.zone.server.dns_port)
+        except dns.tsig.PeerBadKey:
+            logging.error('add record failed because of tsig key mismatch')
+        else:
+            if resp.rcode() != dns.rcode.NOERROR:
+                self.delete()
 
     def update_record(self):
         self.add_record()
@@ -209,17 +228,18 @@ class Record(models.Model):
         else:
             keyring = transfer_key.create_keyring()
             algorithm = transfer_key.algorithm
-
-        dns_update = dns.update.Update(
-            self.zone.zone_name, keyring=keyring, keyalgorithm=algorithm)
-        dns_update.delete(self.name)
-        resp = dns.query.tcp(
-            dns_update, self.zone.server.ip_address,
-            port=self.zone.server.dns_port)
-        if resp.rcode() == dns.rcode.NOERROR:
-            pass
+        try:
+            dns_update = dns.update.Update(
+                self.zone.zone_name, keyring=keyring, keyalgorithm=algorithm)
+            dns_update.delete(self.name)
+            resp = dns.query.tcp(
+                dns_update, self.zone.server.ip_address,
+                port=self.zone.server.dns_port)
+        except dns.tsig.PeerBadKey:
+            logging.error('delete record failed because of tsig key mismatch')
         else:
-            print(resp.rcode())
+            if resp.rcode() != dns.rcode.NOERROR:
+                print(resp.rcode())
 
     class Meta:
         ordering = ('-id',)
