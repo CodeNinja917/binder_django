@@ -56,7 +56,18 @@ key "web" {
 pip install -r requirement.txt
 ```
 
+### 初始化
+- 添加tsig key
+- 添加master dns
+- 同步域名信息
+- 同步域名记录新
+
 *同步域名信息*
 ```
-api: /dns/server/{server_id}/sync_server_zone
+api: /dns/server/{server_id}/sync_server_zone/
+```
+
+*同步域名记录信息*
+```
+api: /dns/zones/{zone_id}/sync_zone_records/
 ```
