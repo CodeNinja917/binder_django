@@ -1,6 +1,5 @@
 from django.db import models
-from .choices import AlgorithmChoice
-from .choices import ClientUpdateTypeChoice
+from .choices import (client_update_types, alogrithms)
 from .exceptions import KeyringException
 from binder.settings import DNS
 
@@ -53,12 +52,12 @@ class Server(models.Model):
 class Key(models.Model):
     name = models.CharField(max_length=32, unique=True)
     algorithm = models.CharField(
-        max_length=32, choices=AlgorithmChoice.choices,
-        default=AlgorithmChoice.opts.HMAC_SHA1)
+        max_length=32, choices=alogrithms.choices,
+        default=alogrithms.HMAC_MD5)
     passwd_len = models.IntegerField(default=512)
     update_type = models.CharField(
-        max_length=16, choices=ClientUpdateTypeChoice.choices,
-        default=ClientUpdateTypeChoice.opts.HOST)
+        max_length=16, choices=client_update_types.choices,
+        default=client_update_types.HOST)
     data = models.CharField(max_length=255, default='')
     created_time = models.DateTimeField(auto_now_add=True)
     description = models.CharField(max_length=2048, default='')
