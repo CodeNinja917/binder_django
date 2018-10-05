@@ -3,7 +3,6 @@ from django.urls import reverse
 from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.test import APITestCase
-from ..models import Zone
 from ..serializers import (
     ZoneSerializer, ServerSerializer, KeySerializer, RecordSerializer)
 
