@@ -159,7 +159,7 @@ class Zone(models.Model):
                         'view_name': self.view_name,
                         'key_name': self.server.default_transfer_key.name
                     })
-            con.run('/usr/sbin/rndc reload')
+            # con.run('/usr/sbin/rndc reload')
         except UnexpectedExit as exc:
             logging.error('exec command failed for {}, exit code {}'.format(
                 exc.result.command, exc.result.exited))
